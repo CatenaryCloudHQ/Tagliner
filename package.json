@@ -1,0 +1,129 @@
+{
+  "name": "tagliner",
+  "displayName": "tagliner",
+  "author": "Roman Naumenko",
+  "description": "Tagliner helps organize project files by tags that look like this: // METATAG: auth (use snippets for fast tagging). Tagliner extention tracks tags on file save. It shows files organized by tag value: this way developers can see all related files with the context that makes sense. Extention makes it very easy to track changes and features in large codebase or during refactoring effort. Since it can track any tags, for example TODO, BUG etc, it makes it very easy to see related files",
+  "version": "0.0.4",
+  "engines": {
+    "vscode": "^1.104.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "icon": "media/icon.png",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/CatenaryCloudHQ/Tagliner.git"
+  },
+  "license": "MIT",
+  "main": "./dist/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "tagliner.rebuild",
+        "title": "Tagliner: Rebuild Tag Index"
+      },
+      {
+        "command": "tagliner.selectTagFilter",
+        "title": "Tagliner: Select Tag Filter"
+      },
+      {
+        "command": "tagliner.openLocation",
+        "title": "Tagliner: Open Location"
+      }
+    ],
+    "configuration": {
+      "title": "Tagliner",
+      "properties": {
+        "tagliner.tags": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [
+            "METATAG",
+            "TODO",
+            "BUG"
+          ],
+          "description": "List of tag identifiers to scan for in the workspace."
+        },
+        "tagliner.ignoreGlobs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [
+            ".vscode/**"
+          ],
+          "description": "Additional glob patterns to ignore when rebuilding the tag index."
+        }
+      }
+    },
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "tagliner",
+          "title": "Tagliner",
+          "icon": "resources/tagliner.svg"
+        }
+      ]
+    },
+    "views": {
+      "tagliner": [
+        {
+          "id": "tagliner.tagView",
+          "name": "Tagliner"
+        }
+      ]
+    },
+    "menus": {
+      "view/title": [
+        {
+          "command": "tagliner.rebuild",
+          "when": "view == tagliner.tagView",
+          "group": "navigation"
+        },
+        {
+          "command": "tagliner.selectTagFilter",
+          "when": "view == tagliner.tagView",
+          "group": "navigation"
+        }
+      ]
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "yarn run package",
+    "compile": "yarn run check-types && yarn run lint && node esbuild.js",
+    "watch": "npm-run-all -p watch:*",
+    "watch:esbuild": "node esbuild.js --watch",
+    "watch:tsc": "tsc --noEmit --watch --project tsconfig.json",
+    "package": "yarn run check-types && yarn run lint && node esbuild.js --production",
+    "compile-tests": "tsc -p . --outDir out",
+    "watch-tests": "tsc -p . -w --outDir out",
+    "pretest": "yarn run compile-tests && yarn run compile && yarn run lint",
+    "check-types": "tsc --noEmit",
+    "lint": "eslint src",
+    "test": "vscode-test"
+  },
+  "devDependencies": {
+    "@types/mocha": "^10.0.10",
+    "@types/node": "22.x",
+    "@types/vscode": "^1.104.0",
+    "@typescript-eslint/eslint-plugin": "^8.45.0",
+    "@typescript-eslint/parser": "^8.45.0",
+    "@vscode/test-cli": "^0.0.11",
+    "@vscode/test-electron": "^2.5.2",
+    "@vscode/vsce": "^3.6.2",
+    "esbuild": "^0.25.10",
+    "eslint": "^9.36.0",
+    "npm-run-all": "^4.1.5",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.9.3"
+  },
+  "dependencies": {
+    "ignore": "^5.3.1"
+  }
+}

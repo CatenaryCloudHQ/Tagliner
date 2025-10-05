@@ -1,0 +1,24 @@
+{
+  "persistence": {
+    "scope": "javascript,typescript",
+    "prefix": "/persistence",
+    "body": ["//METATAG: persistence"]
+  },
+  "settings": {
+    "scope": "javascript,typescript",
+    "prefix": "/settings",
+    "body": ["//METATAG: ui"]
+  },
+  "header": {
+    "scope": "javascript,typescript",
+    "prefix": "/banner",
+    "body": [
+      "// ──────────────────────────────────────────────────────────────",
+      "// PURPOSE: $1",
+      "// CONTEXT: $2",
+      "// EXTRA_INFO: $3",
+      "// ──────────────────────────────────────────────────────────────"
+    ],
+    "description": "Insert AI agent documentation header"
+  }
+}

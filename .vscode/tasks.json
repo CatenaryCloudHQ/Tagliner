@@ -1,0 +1,43 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "watch",
+      "dependsOn": ["watch:tsc", "watch:esbuild"],
+      "presentation": { "reveal": "never" },
+      "group": { "kind": "build", "isDefault": true }
+    },
+    {
+      "label": "watch:tsc",
+      "type": "shell",
+      "command": "yarn watch:tsc",
+      "isBackground": true,
+      "problemMatcher": "$tsc-watch",
+      "presentation": { "group": "watch", "reveal": "never" },
+      "group": "build"
+    },
+    {
+      "label": "watch:esbuild",
+      "type": "shell",
+      "command": "yarn watch:esbuild",
+      "isBackground": true,
+      "problemMatcher": "$tsc-watch",
+      "presentation": { "group": "watch", "reveal": "never" },
+      "group": "build"
+    },
+    {
+      "label": "watch-tests",
+      "type": "shell",
+      "command": "yarn watch-tests",
+      "isBackground": true,
+      "problemMatcher": "$tsc-watch",
+      "presentation": { "reveal": "never", "group": "watchers" },
+      "group": "build"
+    },
+    {
+      "label": "tasks: watch-tests",
+      "dependsOn": ["watch", "watch-tests"],
+      "problemMatcher": []
+    }
+  ]
+}
