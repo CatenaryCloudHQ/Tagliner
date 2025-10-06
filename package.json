@@ -2,8 +2,9 @@
   "name": "tagliner",
   "displayName": "tagliner",
   "author": "Roman Naumenko",
+  "publisher": "CatenaryCloud",
   "description": "Tagliner helps organize project files by tags that look like this: // METATAG: auth (use snippets for fast tagging). Tagliner extention tracks tags on file save. It shows files organized by tag value: this way developers can see all related files with the context that makes sense. Extention makes it very easy to track changes and features in large codebase or during refactoring effort. Since it can track any tags, for example TODO, BUG etc, it makes it very easy to see related files",
-  "version": "0.0.4",
+  "version": "0.0.5",
   "engines": {
     "vscode": "^1.104.0"
   },
