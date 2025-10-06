@@ -1,6 +1,7 @@
 import { parseTagEntries, sanitiseTags } from "../helpers/tag-utils";
 import { TagEntries } from "../types/tag-models";
 import { TagParser, TagParserState } from "../types/tag-contracts";
+
 export function createTagParser(): TagParser {
   const state: TagParserState = {
     tags: [],

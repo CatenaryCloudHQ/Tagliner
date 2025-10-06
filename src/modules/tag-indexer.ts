@@ -8,8 +8,7 @@ import {
   TagLocation,
 } from "../types/tag-models";
 import { TagIndexer, TagIndexerState } from "../types/tag-contracts";
-//METATAG: ui
-//TODO: documentation
+
 const DEFAULT_IGNORE_PATTERNS = [
   "**/.git/**",
   "**/node_modules/**",
@@ -40,15 +39,26 @@ interface TagIndexerDependencies {
   readonly ignoreGlobs?: ReadonlyArray<string>;
 }
 
+interface InternalTagIndexerState extends TagIndexerState {
+  ignoreMatcher?: IgnoreMatcher;
+  gitIgnoreRules: IgnoreRule[];
+}
+
 export function createTagIndexer(deps: TagIndexerDependencies): TagIndexer {
-  const state: TagIndexerState = {
+  const initialIgnoreGlobs = Array.from(
+    new Set([...(deps.ignoreGlobs ?? []), ...DEFAULT_IGNORE_PATTERNS])
+  );
+
+  const state: InternalTagIndexerState = {
     rebuildInProgress: false,
-    ignoreGlobs: Array.from(
-      new Set([...(deps.ignoreGlobs ?? []), ...DEFAULT_IGNORE_PATTERNS])
-    ),
+    ignoreGlobs: initialIgnoreGlobs,
+    gitIgnoreRules: [],
+    ignoreMatcher: buildIgnoreMatcher(initialIgnoreGlobs),
   };
 
-  function init(): void {}
+  function init(): void {
+    void refreshGitIgnoreRules();
+  }
 
   function dispose(): void {}
 
@@ -56,8 +66,9 @@ export function createTagIndexer(deps: TagIndexerDependencies): TagIndexer {
     showNotification: boolean;
   }): Promise<void> {
     if (state.rebuildInProgress) {
-      if (input.showNotification)
+      if (input.showNotification) {
         deps.window.showInformationMessage("Tagliner is already rebuilding.");
+      }
       return;
     }
 
@@ -76,39 +87,29 @@ export function createTagIndexer(deps: TagIndexerDependencies): TagIndexer {
             return;
           }
 
+          state.ignoreMatcher = buildIgnoreMatcher(state.ignoreGlobs);
+          await refreshGitIgnoreRules();
+
           const aggregated = new Map<
             string,
             Map<string, Map<string, TagEntryLocation>>
           >();
+
           const excludeGlob = buildExcludeGlob(
             deps.workspace,
             state.ignoreGlobs
           );
           const files = await findWorkspaceFiles(deps.workspace, excludeGlob);
-          const gitIgnoreRules = await createGitIgnoreRules(
-            deps.workspace,
-            state.ignoreGlobs
-          );
-          if (files.length === 0) {
-            await deps.store.handleReplaceAll({ index: {} });
-            return;
-          }
+          const filtered = files.filter((uri) => shouldIndexUri(uri));
 
-          const filtered = files.filter(
-            (uri) =>
-              shouldProcessUri(deps.workspace, uri) &&
-              !isIgnoredByGitIgnore(deps.workspace, gitIgnoreRules, uri)
-          );
           if (filtered.length === 0) {
             await deps.store.handleReplaceAll({ index: {} });
             return;
           }
 
-          const total = filtered.length;
-          const increment = total > 0 ? 100 / total : 0;
+          const increment = 100 / filtered.length;
 
-          for (let index = 0; index < filtered.length; index += 1) {
-            const uri = filtered[index];
+          for (const uri of filtered) {
             progress.report({
               increment,
               message: deps.workspace.asRelativePath(uri, false),
@@ -136,32 +137,33 @@ export function createTagIndexer(deps: TagIndexerDependencies): TagIndexer {
         }
       );
 
-      if (input.showNotification)
+      if (input.showNotification) {
         deps.window.showInformationMessage("Tagliner rebuild complete.");
+      }
     } catch (error) {
       console.error("Tagliner rebuild failed", error);
-      if (input.showNotification)
+      if (input.showNotification) {
         deps.window.showErrorMessage(
           "Tagliner rebuild failed. Check logs for details."
         );
+      }
     } finally {
       state.rebuildInProgress = false;
     }
   }
 
+  function handleUpdateIgnoreGlobs(input: { ignoreGlobs: string[] }): void {
+    state.ignoreGlobs = Array.from(
+      new Set([...DEFAULT_IGNORE_PATTERNS, ...input.ignoreGlobs])
+    );
+    state.ignoreMatcher = buildIgnoreMatcher(state.ignoreGlobs);
+    void refreshGitIgnoreRules();
+  }
+
   async function handleDidSaveDocument(
     document: vscode.TextDocument
   ): Promise<void> {
-    if (!shouldProcessDocument(deps.workspace, document)) return;
-    if (deps.parser.state.tags.length === 0) {
-      await deps.store.handleRemoveFile({ uri: document.uri });
-      return;
-    }
-
-    const entries = deps.parser.handleParseDocument({
-      content: document.getText(),
-    });
-    await deps.store.handleUpdateFile({ uri: document.uri, entries });
+    await indexUri(document.uri, async () => document);
   }
 
   async function handleDidDeleteFiles(
@@ -180,23 +182,71 @@ export function createTagIndexer(deps: TagIndexerDependencies): TagIndexer {
         oldUri: file.oldUri,
         newUri: file.newUri,
       });
-      try {
-        const document = await deps.workspace.openTextDocument(file.newUri);
-        await handleDidSaveDocument(document);
-      } catch (error) {
-        console.error(
-          "Tagliner failed to reindex renamed file",
-          file.newUri.toString(),
-          error
-        );
-      }
+      await indexUri(file.newUri);
     }
   }
 
-  function handleUpdateIgnoreGlobs(input: { ignoreGlobs: string[] }): void {
-    state.ignoreGlobs = Array.from(
-      new Set([...DEFAULT_IGNORE_PATTERNS, ...input.ignoreGlobs])
-    );
+  async function indexUri(
+    uri: vscode.Uri,
+    documentFactory?: () => Promise<vscode.TextDocument>
+  ): Promise<void> {
+    if (!shouldIndexUri(uri)) {
+      await deps.store.handleRemoveFile({ uri });
+      return;
+    }
+
+    if (deps.parser.state.tags.length === 0) {
+      await deps.store.handleRemoveFile({ uri });
+      return;
+    }
+
+    try {
+      const document = documentFactory
+        ? await documentFactory()
+        : await deps.workspace.openTextDocument(uri);
+
+      const entries = deps.parser.handleParseDocument({
+        content: document.getText(),
+      });
+
+      if (entries.size === 0) {
+        await deps.store.handleRemoveFile({ uri });
+        return;
+      }
+
+      await deps.store.handleUpdateFile({ uri, entries });
+    } catch (error) {
+      console.error("Tagliner failed to index", uri.toString(), error);
+    }
+  }
+
+  function shouldIndexUri(uri: vscode.Uri): boolean {
+    if (!shouldProcessUri(deps.workspace, uri)) return false;
+    if (isIgnoredByGlobs(uri)) return false;
+    if (isIgnoredByGitIgnore(deps.workspace, state.gitIgnoreRules, uri)) return false;
+    return true;
+  }
+
+  function isIgnoredByGlobs(uri: vscode.Uri): boolean {
+    const matcher = state.ignoreMatcher;
+    if (!matcher) return false;
+    const folder = deps.workspace.getWorkspaceFolder(uri);
+    if (!folder) return false;
+    const relative = getNormalisedRelativePath(folder.uri.fsPath, uri.fsPath);
+    if (!relative) return false;
+    return matcher.ignores(relative);
+  }
+
+  async function refreshGitIgnoreRules(): Promise<void> {
+    try {
+      state.gitIgnoreRules = await createGitIgnoreRules(
+        deps.workspace,
+        state.ignoreGlobs
+      );
+    } catch (error) {
+      console.error("Tagliner failed to refresh .gitignore rules", error);
+      state.gitIgnoreRules = [];
+    }
   }
 
   return {
@@ -305,11 +355,7 @@ async function createGitIgnoreRules(
       const matcher = ignore().add(content);
       rules.push({ basePath: path.dirname(uri.fsPath), matcher });
     } catch (error) {
-      console.error(
-        "Tagliner failed to read .gitignore",
-        uri.toString(),
-        error
-      );
+      console.error("Tagliner failed to read .gitignore", uri.toString(), error);
     }
   }
 
@@ -332,7 +378,7 @@ function isIgnoredByGitIgnore(
       ensureTrailingSeparator(rule.basePath).length
     );
     if (relativePath.length === 0) continue;
-    const normalised = relativePath.split(path.sep).join("/");
+    const normalised = toPosixPath(relativePath);
     if (rule.matcher.ignores(normalised)) return true;
   }
 
@@ -346,6 +392,29 @@ function isWithinBasePath(basePath: string, candidatePath: string): boolean {
 
 function ensureTrailingSeparator(value: string): string {
   return value.endsWith(path.sep) ? value : `${value}${path.sep}`;
+}
+
+function buildIgnoreMatcher(patterns: readonly string[]): IgnoreMatcher | undefined {
+  const entries = patterns
+    .map((pattern) => pattern.trim())
+    .filter((pattern) => pattern.length > 0)
+    .map(toPosixPath);
+
+  if (entries.length === 0) return undefined;
+  return ignore().add(entries);
+}
+
+function getNormalisedRelativePath(
+  basePath: string,
+  targetPath: string
+): string | undefined {
+  const relative = path.relative(basePath, targetPath);
+  if (!relative || relative.startsWith("..")) return undefined;
+  return toPosixPath(relative);
+}
+
+function toPosixPath(value: string): string {
+  return value.split(path.sep).join("/");
 }
 
 function mergeEntries(
